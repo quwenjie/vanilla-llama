@@ -70,14 +70,15 @@ maxlen=int(sys.argv[2])
 path=f"/scratch/llama/models/{modelname}_vanilla"
 llama = LLaMAInference(path, modelname)
 H=torch.ones((3,5)).cuda()
-if dist.get_rank()==0:
-    print("I will send")
-    dist.send(H,dst=1)
-    print(H)
-else:
-    print("Now I recv!")
-    dist.recv(H,src=0)
-    print(H)
+if dist.get_world_size()>1:
+    if dist.get_rank()==0:
+        print("I will send")
+        dist.send(H,dst=1)
+        print(H)
+    else:
+        print("Now I recv!")
+        dist.recv(H,src=0)
+        print(H)
 for i in range(1):
     gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], temperature=0, max_length=maxlen)
     print(gen)
