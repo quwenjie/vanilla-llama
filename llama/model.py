@@ -213,6 +213,14 @@ def is_valid_layer(layer_id,rank,world_size,layer_num):
     layer_cnt=layer_num/world_size
     return layer_id>=layer_cnt*rank and layer_id<layer_cnt*(1+rank)
 
+def is_last_layer(layer_id,rank,world_size,layer_num):
+    layer_cnt=layer_num/world_size
+    return layer_id==layer_cnt*(1+rank)-1
+
+def is_first_layer(layer_id,rank,world_size,layer_num):
+    layer_cnt=layer_num/world_size
+    return layer_id==layer_cnt*rank
+
 class Transformer(nn.Module):
     def __init__(self, params: ModelArgs):
         super().__init__()
@@ -253,8 +261,15 @@ class Transformer(nn.Module):
             for layer_id in range(len(self.layers)):
                 layer=self.layers[layer_id]
                 if is_valid_layer(layer_id,rank,world_size,len(self.layers)):
+                    if world_size>1 and rank>0 and is_first_layer(layer_id,rank,world_size,len(self.layers)):
+                        dist.recv(h,rank-1)
                     h = h.to(layer.parameters().__next__().device)
                     h = layer(h, start_pos, freqs_cis, mask)
+                    if world_size>1 and is_last_layer(layer_id,rank,world_size,len(self.layers)):
+                        if rank<world_size-1:
+                            dist.send(h,rank+1)
+                        else:
+                            dist.send(h,0)
                 else:
                     continue
             h = h.to(self.norm.parameters().__next__().device)

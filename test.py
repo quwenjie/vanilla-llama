@@ -71,5 +71,5 @@ path=f"/scratch/llama/models/{modelname}_vanilla"
 llama = LLaMAInference(path, modelname)
 
 for i in range(1):
-    gen, stats= llama.generate(["I believe the meaning of life is","fuck you bitch shit"],max_length=maxlen)
+    gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], max_length=maxlen)
     print(gen)
