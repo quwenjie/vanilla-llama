@@ -72,7 +72,7 @@ llama = LLaMAInference(path, modelname)
 H=torch.ones((3,5)).cuda()
 if dist.get_rank()==0:
     dist.send(H,1)
-    print((H)
+    print(H)
 else:
     dist.recv(H,0)
     print(H)
