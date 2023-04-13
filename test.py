@@ -25,7 +25,7 @@ class LLaMAInference:
 
         model_args = dict(
             max_seq_len=2048,
-            max_batch_size=1,
+            max_batch_size=32,
             **params
         )
         model_args.update(kwargs)
@@ -34,13 +34,19 @@ class LLaMAInference:
         self.tokenizer = Tokenizer(model_path=tokenizer_path)
         model_args.vocab_size = self.tokenizer.n_words
 
-        torch.set_default_tensor_type(torch.HalfTensor)
-        model = Transformer(model_args)
+        with init_empty_weights():
+            torch.set_default_tensor_type(torch.HalfTensor)
+            model = Transformer(model_args)
         torch.set_default_tensor_type(torch.FloatTensor)
 
-        model.load_state_dict(torch.load(state_dict))
+        self.model = load_checkpoint_and_dispatch(
+            model,
+            state_dict,
+            device_map=device_map,
+            no_split_module_classes=["TransformerBlock"]
+        )
 
-        self.generator = LLaMA(model, self.tokenizer)
+        self.generator = LLaMA(self.model, self.tokenizer)
 
     def generate(self, texts, temperature=0.8, top_p=0.95, max_length=5, stop_ids=None, stop_words=None):
         start_time = time.time()

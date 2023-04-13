@@ -211,7 +211,7 @@ def convert_linear_to_bnb(float_linear):
 
 def is_valid_layer(layer_id,rank,world_size,layer_num):
     layer_cnt=layer_num/world_size
-    return layer_id>=layer_cnt*rank and layer_id<layer_cnt*rank
+    return layer_id>=layer_cnt*rank and layer_id<layer_cnt*(1+rank)
 
 class Transformer(nn.Module):
     def __init__(self, params: ModelArgs):
