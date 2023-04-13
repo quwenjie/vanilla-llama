@@ -71,10 +71,10 @@ path=f"/scratch/llama/models/{modelname}_vanilla"
 llama = LLaMAInference(path, modelname)
 H=torch.ones((3,5)).cuda()
 if dist.get_rank()==0:
-    torch.send(H,1)
-    print(H)
+    dist.send(H,1)
+    print((H)
 else:
-    torch.recv(H,0)
+    dist.recv(H,0)
     print(H)
 for i in range(1):
     gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], max_length=maxlen)
