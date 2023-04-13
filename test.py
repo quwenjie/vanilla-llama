@@ -2,6 +2,8 @@ import sys
 import time
 import json
 import torch
+import torch.distributed as dist
+import datetime
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 import os
 from llama import ModelArgs, Tokenizer, Transformer, LLaMA
@@ -32,19 +34,13 @@ class LLaMAInference:
         self.tokenizer = Tokenizer(model_path=tokenizer_path)
         model_args.vocab_size = self.tokenizer.n_words
 
-        with init_empty_weights():
-            torch.set_default_tensor_type(torch.HalfTensor)
-            model = Transformer(model_args)
+        torch.set_default_tensor_type(torch.HalfTensor)
+        model = Transformer(model_args)
         torch.set_default_tensor_type(torch.FloatTensor)
 
-        self.model = load_checkpoint_and_dispatch(
-            model,
-            state_dict,
-            device_map=device_map,
-            no_split_module_classes=["TransformerBlock"]
-        )
+        model.load_state_dict(torch.load(state_dict))
 
-        self.generator = LLaMA(self.model, self.tokenizer)
+        self.generator = LLaMA(model, self.tokenizer)
 
     def generate(self, texts, temperature=0.8, top_p=0.95, max_length=5, stop_ids=None, stop_words=None):
         start_time = time.time()
@@ -61,11 +57,13 @@ class LLaMAInference:
         stats["toks"] =  max(stats["num_generated_tokens"])
         return results, stats
 
+dist.init_process_group(backend="nccl", init_method="env://", timeout=datetime.timedelta(seconds=1800), world_size=int(os.environ.get("WORLD_SIZE")), rank=int(os.environ.get("WORLD_RANK")), store=None, group_name='', pg_options=None)
+
 modelname=sys.argv[1]
 maxlen=int(sys.argv[2])
 path=f"/scratch/llama/models/{modelname}_vanilla"
 llama = LLaMAInference(path, modelname)
 
 for i in range(1):
-    gen, stats= llama.generate(["I believe the meaning of life is"],max_length=maxlen)
+    gen, stats= llama.generate(["I believe the meaning of life is","fuck you bitch shit"],max_length=maxlen)
     print(gen)

@@ -8,7 +8,7 @@ import math
 import torch
 from torch import nn
 import torch.nn.functional as F
-
+import torch.distributed as dist
 
 @dataclass
 class ModelArgs:
@@ -209,6 +209,9 @@ def convert_linear_to_bnb(float_linear):
         new_layer._parameters["bias"] = float_linear.bias
     return new_layer
 
+def is_valid_layer(layer_id,rank,world_size,layer_num):
+    layer_cnt=layer_num/world_size
+    return layer_id>=layer_cnt*rank and layer_id<layer_cnt*rank
 
 class Transformer(nn.Module):
     def __init__(self, params: ModelArgs):
@@ -231,27 +234,33 @@ class Transformer(nn.Module):
             self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
         )
 
-    @torch.inference_mode()
+    #@torch.inference_mode()
     def forward(self, tokens: torch.Tensor, start_pos: int):
-        _bsz, seqlen = tokens.shape
-        h = self.tok_embeddings(tokens)
-        self.freqs_cis = self.freqs_cis.to(h.device)
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-
-        mask = None
-        if seqlen > 1:
-            mask = torch.full(
+        with torch.no_grad():
+            rank = dist.get_rank()
+            world_size= dist.get_world_size()
+            _bsz, seqlen = tokens.shape
+            h = self.tok_embeddings(tokens)
+            self.freqs_cis = self.freqs_cis.to(h.device)
+            freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+            mask = None
+            if seqlen > 1:
+                mask = torch.full(
                 (1, 1, seqlen, seqlen), float("-inf"), device=tokens.device
-            )
-            mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+             )
+                mask = torch.triu(mask, diagonal=start_pos + 1).type_as(h)
+        
+            for layer_id in range(len(self.layers)):
+                layer=self.layers[layer_id]
+                if is_valid_layer(layer_id,rank,world_size,len(self.layers)):
+                    h = h.to(layer.parameters().__next__().device)
+                    h = layer(h, start_pos, freqs_cis, mask)
+                else:
+                    continue
+            h = h.to(self.norm.parameters().__next__().device)
+            h = self.norm(h)
 
-        for layer in self.layers:
-            h = h.to(layer.parameters().__next__().device)
-            h = layer(h, start_pos, freqs_cis, mask)
-        h = h.to(self.norm.parameters().__next__().device)
-        h = self.norm(h)
-
-        hl = h[:, -1, :]
-        hl = hl.to(self.output.parameters().__next__().device)
-        output = self.output(hl)
-        return output.float()
+            hl = h[:, -1, :]
+            hl = hl.to(self.output.parameters().__next__().device)
+            output = self.output(hl)
+            return output.float()
