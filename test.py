@@ -62,7 +62,7 @@ class LLaMAInference:
         stats["total_seconds"] = end_time - start_time
         stats["toks"] =  max(stats["num_generated_tokens"])
         return results, stats
-
+print(dist.is_nccl_available())
 dist.init_process_group(backend="nccl", init_method="env://", timeout=datetime.timedelta(seconds=1800), world_size=int(os.environ.get("WORLD_SIZE")), rank=int(os.environ.get("WORLD_RANK")), store=None, group_name='', pg_options=None)
 print("dist init!",dist.get_world_size(),dist.get_rank())
 modelname=sys.argv[1]
@@ -71,10 +71,12 @@ path=f"/scratch/llama/models/{modelname}_vanilla"
 llama = LLaMAInference(path, modelname)
 H=torch.ones((3,5)).cuda()
 if dist.get_rank()==0:
-    dist.send(H,1)
+    print("I will send")
+    dist.send(H,dst=1)
     print(H)
 else:
-    dist.recv(H,0)
+    print("Now I recv!")
+    dist.recv(H,src=0)
     print(H)
 for i in range(1):
     gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], max_length=maxlen)
