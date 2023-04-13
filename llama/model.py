@@ -289,4 +289,5 @@ class Transformer(nn.Module):
             hl = h[:, -1, :]
             hl = hl.to(self.output.parameters().__next__().device)
             output = self.output(hl)
+            print(output)
             return output.float()
