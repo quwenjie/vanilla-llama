@@ -261,17 +261,25 @@ class Transformer(nn.Module):
             for layer_id in range(len(self.layers)):
                 layer=self.layers[layer_id]
                 if is_valid_layer(layer_id,rank,world_size,len(self.layers)):
+                    print(f"enter layer {layer_id} rank")
                     if world_size>1 and rank>0 and is_first_layer(layer_id,rank,world_size,len(self.layers)):
+                        print(f"start recv from {rank-1}")
                         dist.recv(h,rank-1)
                     h = h.to(layer.parameters().__next__().device)
                     h = layer(h, start_pos, freqs_cis, mask)
                     if world_size>1 and is_last_layer(layer_id,rank,world_size,len(self.layers)):
                         if rank<world_size-1:
+                            print(f"start send to {rank+1}")
                             dist.send(h,rank+1)
                         else:
+                            print(f"compute finish send")
                             dist.send(h,0)
                 else:
+                    print(f"skip")
                     continue
+            if rank<world_size-1:
+                dist.recv(h,world_size-1)
+                print(f"got final embd")
             h = h.to(self.norm.parameters().__next__().device)
             h = self.norm(h)
 

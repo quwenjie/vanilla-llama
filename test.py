@@ -64,7 +64,7 @@ class LLaMAInference:
         return results, stats
 
 dist.init_process_group(backend="nccl", init_method="env://", timeout=datetime.timedelta(seconds=1800), world_size=int(os.environ.get("WORLD_SIZE")), rank=int(os.environ.get("WORLD_RANK")), store=None, group_name='', pg_options=None)
-
+print("dist init!")
 modelname=sys.argv[1]
 maxlen=int(sys.argv[2])
 path=f"/scratch/llama/models/{modelname}_vanilla"
