@@ -38,7 +38,7 @@ class LLaMAInference:
             torch.set_default_tensor_type(torch.HalfTensor)
             model = Transformer(model_args)
         torch.set_default_tensor_type(torch.FloatTensor)
-
+        print(model.state_dict())
         self.model = load_checkpoint_and_dispatch(
             model,
             state_dict,
