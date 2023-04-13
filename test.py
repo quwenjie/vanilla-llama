@@ -79,5 +79,5 @@ else:
     dist.recv(H,src=0)
     print(H)
 for i in range(1):
-    gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], max_length=maxlen)
+    gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], temperature=0, max_length=maxlen)
     print(gen)
