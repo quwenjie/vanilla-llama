@@ -6,7 +6,8 @@ import torch.distributed as dist
 import datetime
 from accelerate import init_empty_weights, load_checkpoint_and_dispatch
 import os
-from llama import ModelArgs, Tokenizer, Transformer, LLaMA
+from llama import ModelArgs, Tokenizer, Transformer, LLaMA, is_valid_layer
+
 
 class LLaMAInference:
     def __init__(self, llama_path, model, device_map="auto", **kwargs):
@@ -25,7 +26,7 @@ class LLaMAInference:
 
         model_args = dict(
             max_seq_len=2048,
-            max_batch_size=32,
+            max_batch_size=2,
             **params
         )
         model_args.update(kwargs)
@@ -37,8 +38,9 @@ class LLaMAInference:
         with init_empty_weights():
             torch.set_default_tensor_type(torch.HalfTensor)
             model = Transformer(model_args)
+
         torch.set_default_tensor_type(torch.FloatTensor)
-        print(model.state_dict())
+
         self.model = load_checkpoint_and_dispatch(
             model,
             state_dict,
@@ -62,23 +64,32 @@ class LLaMAInference:
         stats["total_seconds"] = end_time - start_time
         stats["toks"] =  max(stats["num_generated_tokens"])
         return results, stats
+
 print(dist.is_nccl_available())
 dist.init_process_group(backend="nccl", init_method="env://", timeout=datetime.timedelta(seconds=1800), world_size=int(os.environ.get("WORLD_SIZE")), rank=int(os.environ.get("WORLD_RANK")), store=None, group_name='', pg_options=None)
-print("dist init!",dist.get_world_size(),dist.get_rank())
+world_size=dist.get_world_size()
+rank=dist.get_rank()
 modelname=sys.argv[1]
 maxlen=int(sys.argv[2])
 path=f"/scratch/llama/models/{modelname}_vanilla"
-llama = LLaMAInference(path, modelname)
-H=torch.ones((3,5)).cuda()
-if dist.get_world_size()>1:
-    if dist.get_rank()==0:
-        print("I will send")
-        dist.send(H,dst=1)
-        print(H)
+
+
+with open(os.path.join(path, modelname, "params.json"), "r") as f:
+    params = json.load(f)
+    LAYERNUM = params['n_layers']
+
+cpu=torch.device("cpu")
+gpu=torch.device("cuda")
+device_map={"tok_embeddings":gpu,"norm":gpu,"output":gpu}
+for i in range(LAYERNUM):
+    if is_valid_layer(i,rank,world_size,LAYERNUM):
+        device_map[f"layers.{i}"]=gpu
     else:
-        print("Now I recv!")
-        dist.recv(H,src=0)
-        print(H)
+        device_map[f"layers.{i}"]=cpu
+
+llama = LLaMAInference(path, modelname, device_map=device_map)
+print('finish load model!')
+
 for i in range(1):
     gen, stats= llama.generate(["I believe the meaning of life is","The solution of one plus seventeen is"], temperature=0, max_length=maxlen)
     print(gen)
